@@ -1,10 +1,11 @@
 import base64
 import sys
 import argparse
+import os
 
 global rounds
 
-rounds = 0
+rounds = 11
 
 rcon = [
     0x8d,  # This is a placeholder and typically unused
@@ -223,19 +224,55 @@ def pad(plaintext, block_size=16):
     return plaintext + padding
 
 
+def unpad(padded_data, block_size=16):
+    padding_len = padded_data[-1]
+    return padded_data[:-padding_len]
+
+
 def aes_encrypt_ecb(plaintext, key):
     plaintext = pad(plaintext)
-    cyphertext = []
+    ciphertext = []
     for i in range(0, len(plaintext) - 1, 16):
-        cyphertext += aes_encrypt_block(plaintext[i:i+16], key)
-    return cyphertext
+        ciphertext += aes_encrypt_block(plaintext[i:i+16], key)
+    return ciphertext
 
 
-def aes_decrypt_ecb(cyphertext, key):
+def aes_decrypt_ecb(ciphertext, key):
     plaintext = []
-    for i in range(0, len(cyphertext) - 1, 16):
-        plaintext += aes_decrypt_block(cyphertext[i:i+16], key)
+    for i in range(0, len(ciphertext) - 1, 16):
+        plaintext += aes_decrypt_block(ciphertext[i:i+16], key)
+    plaintext = unpad(plaintext)
     return plaintext
+
+
+def aes_encrypt_ctr(plaintext, key, nonce, counter):
+    output_data = b''
+    for i in range(0, len(plaintext) - 1, 16):
+        counter_block = nonce + counter.to_bytes(8, 'big')
+        keystream_block = aes_encrypt_block(counter_block, key)
+
+        encrypted_block = bytes(
+            a ^ b for a, b in zip(plaintext[i:i+16], keystream_block))
+
+        output_data += encrypted_block
+        counter += 1
+
+    return output_data
+
+
+def aes_decrypt_ctr(ciphertext, key, nonce, counter):
+    output_data = b''
+
+    for i in range(0, len(ciphertext) - 1, 16):
+        block = ciphertext[i:i + 16]
+        counter_block = nonce + counter.to_bytes(8, 'big')
+        keystream_block = aes_encrypt_block(counter_block, key)
+
+        decrypted_block = bytes(a ^ b for a, b in zip(block, keystream_block))
+        output_data += decrypted_block
+        counter += 1
+
+    return output_data
 
 
 def main():
@@ -253,34 +290,55 @@ def main():
                         help='Input file to be processed')
     parser.add_argument('-out_file', type=str,
                         required=True, help='Output file')
+    parser.add_argument('-mode', type=str,
+                        required=True, help='ecb or ctr')
+    parser.add_argument('-iv', type=str,
+                        required=False, help='nonce + counter start')
 
     args = parser.parse_args()
 
     rounds = args.rounds
     in_file = args.in_file
     out_file = args.out_file
-    key = args.key
+    key = bytes.fromhex(args.key)
     operation = args.operation
+    mode = args.mode
+    nonce = bytes.fromhex(args.iv[0:16])
+    counter = int(args.iv[16:])
 
-    key = bytes.fromhex(key)
-
-    print(f'Number of rounds: {rounds}')
-    print(f'Input file: {in_file}')
-
-    if operation == "enc":
-        with open(in_file, 'rb') as infile:
-            plaintext = infile.read()
-        cyphertext = aes_encrypt_ecb(plaintext, key)
-        with open(out_file, 'wb') as outfile:
-            outfile.write(bytes(cyphertext))
-
-    elif operation == "dec":
-        with open(in_file, 'rb') as infile:
-            cyphertext = infile.read()
-        plaintext = aes_decrypt_ecb(cyphertext, key)
-        with open(out_file, 'wb') as outfile:
-            outfile.write(bytes(plaintext))
-
+    if mode == "ecb":
+        if operation == "enc":
+            with open(in_file, 'rb') as infile:
+                plaintext = infile.read()
+            ciphertext = aes_encrypt_ecb(plaintext, key)
+            with open(out_file, 'wb') as outfile:
+                outfile.write(bytes(ciphertext))
+        elif operation == "dec":
+            with open(in_file, 'rb') as infile:
+                ciphertext = infile.read()
+            plaintext = aes_decrypt_ecb(ciphertext, key)
+            with open(out_file, 'wb') as outfile:
+                outfile.write(bytes(plaintext))
+    elif mode == "ctr":
+        if operation == "enc":
+            with open(in_file, 'rb') as infile:
+                plaintext = infile.read()
+            ciphertext = aes_encrypt_ctr(plaintext, key, nonce, counter)
+            with open(out_file, 'wb') as outfile:
+                outfile.write(bytes(ciphertext))
+        elif operation == "dec":
+            with open(in_file, 'rb') as infile:
+                ciphertext = infile.read()
+            plaintext = aes_decrypt_ctr(ciphertext, key, nonce, counter)
+            with open(out_file, 'wb') as outfile:
+                outfile.write(bytes(plaintext))
 
 if __name__ == '__main__':
     main()
+# nonce = bytes.fromhex("1234567890abcdef")
+# key = bytes.fromhex("00112233445566778899aabbccddeeff")
+# with open("./a.bmp", 'rb') as infile:
+#     plaintext = infile.read()
+# ciphertext = aes_encrypt_ctr(plaintext, key, nonce)
+# with open("./c.bmp", 'wb') as outfile:
+#     outfile.write(bytes(ciphertext))
