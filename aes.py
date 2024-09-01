@@ -3,8 +3,6 @@ import sys
 import argparse
 import os
 
-global rounds
-
 rounds = 11
 
 rcon = [
@@ -74,11 +72,11 @@ inv_sbox = [
 
 def key_expansion(key):
 
-    key_schedule = [0] * 176
+    key_schedule = [0] * rounds * 16
     for i in range(16):
         key_schedule[i] = key[i]
 
-    for i in range(16, 176, 4):
+    for i in range(16, rounds * 16, 4):
 
         temp = key_schedule[i-4:i]
 
@@ -186,6 +184,7 @@ def mul_by_e(num):
 
 def aes_encrypt_block(state, key):
 
+    global rounds
     round_keys = key_expansion(key)
 
     state = add_round_key(state, round_keys[0])
@@ -203,6 +202,8 @@ def aes_encrypt_block(state, key):
 
 
 def aes_decrypt_block(state, key):
+
+    global rounds
     round_keys = key_expansion(key)
     state = add_round_key(state, round_keys[rounds - 1])
     state = inv_shift_rows(state)
@@ -297,6 +298,7 @@ def main():
 
     args = parser.parse_args()
 
+    global rounds
     rounds = args.rounds
     in_file = args.in_file
     out_file = args.out_file
@@ -333,12 +335,6 @@ def main():
             with open(out_file, 'wb') as outfile:
                 outfile.write(bytes(plaintext))
 
+
 if __name__ == '__main__':
     main()
-# nonce = bytes.fromhex("1234567890abcdef")
-# key = bytes.fromhex("00112233445566778899aabbccddeeff")
-# with open("./a.bmp", 'rb') as infile:
-#     plaintext = infile.read()
-# ciphertext = aes_encrypt_ctr(plaintext, key, nonce)
-# with open("./c.bmp", 'wb') as outfile:
-#     outfile.write(bytes(ciphertext))
